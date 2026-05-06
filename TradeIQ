@@ -1,0 +1,904 @@
+import { useState, useEffect, useRef, useCallback } from "react";
+
+// ============================================================
+// MOCK DATA
+// ============================================================
+const COINS = [
+  { id: "bitcoin", symbol: "BTC", name: "Bitcoin", icon: "₿", color: "#F7931A" },
+  { id: "ethereum", symbol: "ETH", name: "Ethereum", icon: "Ξ", color: "#627EEA" },
+  { id: "solana", symbol: "SOL", name: "Solana", icon: "◎", color: "#9945FF" },
+  { id: "bnb", symbol: "BNB", name: "BNB", icon: "⬡", color: "#F3BA2F" },
+  { id: "xrp", symbol: "XRP", name: "XRP", icon: "✕", color: "#346AA9" },
+  { id: "sui", symbol: "SUI", name: "Sui", icon: "◈", color: "#4DA2FF" },
+  { id: "ton", symbol: "TON", name: "TON", icon: "◆", color: "#0098EA" },
+];
+
+const BASE_PRICES = { BTC: 103240, ETH: 3821, SOL: 178.4, BNB: 612.3, XRP: 2.341, SUI: 3.82, TON: 5.67 };
+const CHANGES = { BTC: 2.4, ETH: 1.8, SOL: -0.9, BNB: 0.5, XRP: 3.2, SUI: -1.4, TON: 0.8 };
+
+function genPrices(base) {
+  const spread = () => 1 + (Math.random() - 0.5) * 0.003;
+  return { mexc: base * spread(), binance: base * spread(), bybit: base * spread(), okx: base * spread() };
+}
+
+const JOURNAL_DATA = [
+  { id: 1, date: "06.05.2026", pair: "BTC/USDT", type: "LONG", leverage: "10x", entry: 101400, exit: 103200, size: 3200, pnl: 568, note: "Breakout strategiyasi" },
+  { id: 2, date: "05.05.2026", pair: "ETH/USDT", type: "SHORT", leverage: "5x", entry: 3920, exit: 3780, size: 1800, pnl: 324, note: "Resistance dan short" },
+  { id: 3, date: "04.05.2026", pair: "SOL/USDT", type: "LONG", leverage: "8x", entry: 182, exit: 174, size: 1200, pnl: -240, note: "Stop loss ishga tushdi" },
+  { id: 4, date: "03.05.2026", pair: "BNB/USDT", type: "LONG", leverage: "3x", entry: 598, exit: 614, size: 900, pnl: 144, note: "Trend follow" },
+  { id: 5, date: "02.05.2026", pair: "XRP/USDT", type: "SHORT", leverage: "5x", entry: 2.48, exit: 2.31, size: 600, pnl: 204, note: "Bearish divergence" },
+];
+
+const POSITIONS = [
+  { pair: "BTC/USDT", type: "LONG", entry: 101400, size: 3200, leverage: "10x" },
+  { pair: "ETH/USDT", type: "SHORT", entry: 3920, size: 1800, leverage: "5x" },
+];
+
+// ============================================================
+// ICONS
+// ============================================================
+const Icon = ({ name, size = 18 }) => {
+  const icons = {
+    home: "M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z M9 22V12h6v10",
+    chart: "M18 20V10 M12 20V4 M6 20v-6",
+    wallet: "M20 7H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z M16 3H8L4 7h16l-4-4z M12 14a1 1 0 1 0 0-2 1 1 0 0 0 0 2z",
+    brain: "M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96-.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2z M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96-.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2z",
+    book: "M4 19.5A2.5 2.5 0 0 1 6.5 17H20 M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z",
+    arrows: "M7 16V4m0 0L3 8m4-4l4 4 M17 8v12m0 0l4-4m-4 4l-4-4",
+    settings: "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z",
+    send: "M22 2L11 13 M22 2l-7 20-4-9-9-4 20-7z",
+    sun: "M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72 1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42 M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10z",
+    moon: "M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z",
+    menu: "M3 12h18 M3 6h18 M3 18h18",
+    close: "M18 6 6 18 M6 6l12 12",
+    plus: "M12 5v14 M5 12h14",
+    trend_up: "M23 6l-9.5 9.5-5-5L1 18 M17 6h6v6",
+    trend_down: "M23 18l-9.5-9.5-5 5L1 6 M17 18h6v-6",
+    bell: "M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9 M13.73 21a2 2 0 0 1-3.46 0",
+    key: "M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0 3 3L22 7l-3-3m-3.5 3.5L19 4",
+  };
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      {icons[name]?.split(" M").map((d, i) => <path key={i} d={i === 0 ? d : "M" + d} />)}
+    </svg>
+  );
+};
+
+// ============================================================
+// MINI CHART
+// ============================================================
+function MiniChart({ positive, width = 80, height = 36 }) {
+  const pts = positive
+    ? [0, 28, 8, 24, 16, 26, 24, 18, 32, 20, 40, 12, 48, 14, 56, 8, 64, 10, 72, 4, 80, 6]
+    : [0, 6, 8, 10, 16, 8, 24, 16, 32, 14, 40, 22, 48, 18, 56, 26, 64, 22, 72, 28, 80, 32];
+  const color = positive ? "#00e99a" : "#ff4d6d";
+  const polyStr = pts.reduce((a, v, i) => a + (i % 2 === 0 ? (i ? " " : "") + v : "," + v), "");
+  const areaStr = `0,${height} ` + polyStr + ` ${width},${height}`;
+  return (
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
+      <defs>
+        <linearGradient id={`mg${positive}`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity="0.25" />
+          <stop offset="100%" stopColor={color} stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <polygon points={areaStr} fill={`url(#mg${positive})`} />
+      <polyline points={polyStr} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+// ============================================================
+// CLAUDE AI HOOK
+// ============================================================
+function useClaudeAI() {
+  const [messages, setMessages] = useState([
+    { role: "assistant", content: "Assalomu alaykum! Men TradeIQ AI — sizning shaxsiy trading yordamchingizman. Bozor tahlili, savdolaringizni ko'rib chiqish yoki trading jurnalingizni tahlil qilish uchun so'rang! 📊" }
+  ]);
+  const [loading, setLoading] = useState(false);
+
+  const sendMessage = useCallback(async (userMsg, context = "") => {
+    const newMessages = [...messages, { role: "user", content: userMsg }];
+    setMessages(newMessages);
+    setLoading(true);
+
+    try {
+      const systemPrompt = `Sen TradeIQ — O'zbekiston va MDH treyderlar uchun yaratilgan AI trading yordamchisan. 
+Sen faqat O'zbek tilida javob berasan. 
+Qisqa, aniq va foydali javoblar ber.
+Trading, kripto bozor, texnik tahlil, risk management haqida maslahat berasan.
+Hozirgi bozor konteksti: ${context || "BTC ~$103,240, ETH ~$3,821, umumiy bozor ijobiy"}
+Jurnal ma'lumotlari mavjud: 5 ta savdo, 4 ta g'alaba, 1 ta yo'qotish, win rate 80%.
+Javobingni 150 so'zdan oshirma. Emoji ishlatishingiz mumkin.`;
+
+      const apiMessages = newMessages.map(m => ({ role: m.role, content: m.content }));
+
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 1000,
+          system: systemPrompt,
+          messages: apiMessages,
+        }),
+      });
+
+      const data = await res.json();
+      const reply = data.content?.[0]?.text || "Uzr, javob olishda xatolik yuz berdi. Qaytadan urinib ko'ring.";
+      setMessages(prev => [...prev, { role: "assistant", content: reply }]);
+    } catch {
+      setMessages(prev => [...prev, { role: "assistant", content: "Internet aloqasida muammo bor. Qaytadan urinib ko'ring. 🔄" }]);
+    } finally {
+      setLoading(false);
+    }
+  }, [messages]);
+
+  return { messages, loading, sendMessage };
+}
+
+// ============================================================
+// MAIN APP
+// ============================================================
+export default function TradeIQ() {
+  const [dark, setDark] = useState(true);
+  const [page, setPage] = useState("dashboard");
+  const [sideOpen, setSideOpen] = useState(false);
+  const [prices, setPrices] = useState(() => Object.fromEntries(COINS.map(c => [c.symbol, genPrices(BASE_PRICES[c.symbol])])));
+  const [aiInput, setAiInput] = useState("");
+  const [journalEntries, setJournalEntries] = useState(JOURNAL_DATA);
+  const [showAddTrade, setShowAddTrade] = useState(false);
+  const [newTrade, setNewTrade] = useState({ pair: "BTC/USDT", type: "LONG", leverage: "10x", entry: "", exit: "", size: "", note: "" });
+  const [apiKeys, setApiKeys] = useState({ mexc: "", binance: "", bybit: "", okx: "", claude: "" });
+  const [showSettings, setShowSettings] = useState(false);
+  const chatEndRef = useRef(null);
+  const { messages, loading, sendMessage } = useClaudeAI();
+
+  // Real-time price simulation
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setPrices(prev => Object.fromEntries(
+        COINS.map(c => [c.symbol, {
+          mexc: prev[c.symbol].mexc * (1 + (Math.random() - 0.5) * 0.0008),
+          binance: prev[c.symbol].binance * (1 + (Math.random() - 0.5) * 0.0008),
+          bybit: prev[c.symbol].bybit * (1 + (Math.random() - 0.5) * 0.0008),
+          okx: prev[c.symbol].okx * (1 + (Math.random() - 0.5) * 0.0008),
+        }])
+      ));
+    }, 2000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  // THEME
+  const t = dark ? {
+    bg: "#080c14", sidebar: "#0c1220", card: "#101827", card2: "#141e30",
+    border: "#1a2740", text: "#dde4f0", sub: "#5a6a8a", accent: "#00e99a",
+    red: "#ff4d6d", blue: "#3b82f6", yellow: "#f59e0b", purple: "#8b5cf6",
+    inputBg: "#141e30", shadow: "0 4px 24px rgba(0,0,0,0.4)",
+  } : {
+    bg: "#eef2f9", sidebar: "#ffffff", card: "#ffffff", card2: "#f4f7ff",
+    border: "#dde4f0", text: "#1a2340", sub: "#8090b0", accent: "#00b87a",
+    red: "#e8335a", blue: "#2563eb", yellow: "#d97706", purple: "#7c3aed",
+    inputBg: "#f0f4ff", shadow: "0 4px 24px rgba(0,0,0,0.08)",
+  };
+
+  const fmt = (n, dec = 2) => {
+    if (!n) return "0";
+    if (n >= 1000) return n.toLocaleString("en-US", { maximumFractionDigits: dec });
+    if (n < 1) return n.toFixed(4);
+    return n.toFixed(dec);
+  };
+
+  // STATS
+  const totalPnl = journalEntries.reduce((s, e) => s + e.pnl, 0);
+  const wins = journalEntries.filter(e => e.pnl > 0).length;
+  const winRate = Math.round((wins / journalEntries.length) * 100);
+
+  const addTrade = () => {
+    if (!newTrade.entry || !newTrade.exit || !newTrade.size) return;
+    const entry = parseFloat(newTrade.entry);
+    const exit = parseFloat(newTrade.exit);
+    const size = parseFloat(newTrade.size);
+    const pct = newTrade.type === "LONG" ? (exit - entry) / entry : (entry - exit) / entry;
+    const pnl = Math.round(size * pct * parseInt(newTrade.leverage));
+    const today = new Date().toLocaleDateString("uz-UZ").replace(/\//g, ".");
+    setJournalEntries(prev => [{ id: Date.now(), date: today, ...newTrade, entry, exit: parseFloat(newTrade.exit), size, pnl }, ...prev]);
+    setNewTrade({ pair: "BTC/USDT", type: "LONG", leverage: "10x", entry: "", exit: "", size: "", note: "" });
+    setShowAddTrade(false);
+  };
+
+  // ARBITRAGE DATA
+  const arbData = COINS.slice(0, 5).map(c => {
+    const p = prices[c.symbol];
+    const vals = [p.mexc, p.binance, p.bybit, p.okx];
+    const min = Math.min(...vals);
+    const max = Math.max(...vals);
+    const spread = ((max - min) / min * 100);
+    return { ...c, prices: p, spread, profitable: spread > 0.15 };
+  }).sort((a, b) => b.spread - a.spread);
+
+  // ---- NAV ITEMS ----
+  const navItems = [
+    { id: "dashboard", label: "Bosh Sahifa", icon: "home" },
+    { id: "prices", label: "Narxlar", icon: "chart" },
+    { id: "portfolio", label: "Portfolio", icon: "wallet" },
+    { id: "ai", label: "AI Tahlil", icon: "brain" },
+    { id: "journal", label: "Trading Jurnal", icon: "book" },
+    { id: "arbitrage", label: "Arbitraj", icon: "arrows", soon: true },
+  ];
+
+  const css = `
+    @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: ${t.bg}; }
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: ${t.border}; border-radius: 4px; }
+    @keyframes fadeUp { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes glow { 0%,100%{box-shadow:0 0 8px ${t.accent}40} 50%{box-shadow:0 0 20px ${t.accent}80} }
+    .fade { animation: fadeUp 0.35s ease both; }
+    .fade2 { animation: fadeUp 0.35s 0.08s ease both; }
+    .fade3 { animation: fadeUp 0.35s 0.16s ease both; }
+    .fade4 { animation: fadeUp 0.35s 0.24s ease both; }
+    .live-dot { animation: pulse 1.5s infinite; }
+    .glow-btn { animation: glow 2s infinite; }
+    .spin { animation: spin 1s linear infinite; }
+    .nav-item:hover { background: ${t.accent}10 !important; color: ${t.accent} !important; }
+    .card-hover:hover { border-color: ${t.accent}50 !important; transform: translateY(-1px); }
+    .row-hover:hover { background: ${t.accent}06 !important; }
+    .btn-primary { background: ${t.accent}; color: #000; font-weight:700; border:none; cursor:pointer; border-radius:10px; padding:10px 18px; font-size:13px; font-family:'Syne',sans-serif; transition: opacity 0.2s; }
+    .btn-primary:hover { opacity:0.85; }
+    .btn-ghost { background: ${t.card2}; color: ${t.text}; font-weight:600; border: 1px solid ${t.border}; cursor:pointer; border-radius:10px; padding:10px 18px; font-size:13px; font-family:'Syne',sans-serif; transition: all 0.2s; }
+    .btn-ghost:hover { border-color: ${t.accent}60; }
+    input, select, textarea { background: ${t.inputBg}; border: 1px solid ${t.border}; border-radius:10px; padding:10px 14px; color:${t.text}; font-size:13px; font-family:'JetBrains Mono',monospace; outline:none; width:100%; transition: border-color 0.2s; }
+    input:focus, select:focus, textarea:focus { border-color: ${t.accent}60; }
+    select option { background: ${t.card}; }
+    table { width:100%; border-collapse:collapse; }
+    th { font-family:'Syne',sans-serif; font-size:11px; font-weight:600; letter-spacing:0.8px; text-transform:uppercase; color:${t.sub}; padding:12px 16px; text-align:right; background:${t.card2}; }
+    th:first-child { text-align:left; }
+    td { padding:12px 16px; text-align:right; font-family:'JetBrains Mono',monospace; font-size:12px; color:${t.text}; border-top:1px solid ${t.border}; }
+    td:first-child { text-align:left; }
+    tr.row-hover { cursor:default; transition: background 0.15s; }
+    .modal-bg { position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:200; display:flex; align-items:center; justify-content:center; padding:16px; backdrop-filter:blur(4px); }
+    .modal { background:${t.sidebar}; border:1px solid ${t.border}; border-radius:16px; padding:24px; width:100%; max-width:480px; box-shadow:0 24px 60px rgba(0,0,0,0.5); }
+  `;
+
+  // ---- PAGES ----
+
+  // DASHBOARD
+  const Dashboard = () => {
+    const btcPrice = prices.BTC.mexc;
+    const ethPrice = prices.ETH.mexc;
+    const btcPnl = (btcPrice - 101400) / 101400 * 3200 * 10;
+    const ethPnl = (3920 - ethPrice) / 3920 * 1800 * 5;
+    const totalOpen = btcPnl + ethPnl;
+
+    return (
+      <div>
+        {/* Stats row */}
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))", gap:12, marginBottom:16 }}>
+          {[
+            { label:"MEXC Balans", val:"$12,480", sub:"≈ 154M UZS", icon:"💎", color:t.accent, delay:"fade" },
+            { label:"Bugungi PnL", val:`${totalOpen > 0 ? "+" : ""}$${fmt(totalOpen)}`, sub:`${totalOpen > 0 ? "▲" : "▼"} ${fmt(Math.abs(totalOpen/124.8*100),1)}%`, icon:"📈", color:totalOpen>=0?t.accent:t.red, delay:"fade2" },
+            { label:"Ochiq Pos.", val:"2 ta", sub:"BTC + ETH", icon:"⚡", color:t.blue, delay:"fade3" },
+            { label:"Win Rate", val:`${winRate}%`, sub:`${wins}/${journalEntries.length} g'alaba`, icon:"🏆", color:t.yellow, delay:"fade4" },
+          ].map((s,i) => (
+            <div key={i} className={`${s.delay} card-hover`} style={{ background:t.card, border:`1px solid ${t.border}`, borderRadius:14, padding:16, transition:"all 0.2s", boxShadow:t.shadow }}>
+              <div style={{ fontSize:24, marginBottom:10 }}>{s.icon}</div>
+              <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:20, fontWeight:700, color:s.color }}>{s.val}</div>
+              <div style={{ fontSize:11, color:t.sub, marginTop:4, fontFamily:"'Syne',sans-serif" }}>{s.label}</div>
+              <div style={{ fontSize:11, color:s.color, marginTop:2 }}>{s.sub}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* AI Banner */}
+        <div className="fade2" style={{ background:`linear-gradient(135deg,${t.accent}12,${t.blue}08)`, border:`1px solid ${t.accent}30`, borderRadius:14, padding:18, marginBottom:16, boxShadow:`0 0 24px ${t.accent}10` }}>
+          <div style={{ display:"flex", gap:12, alignItems:"flex-start" }}>
+            <div style={{ width:40, height:40, background:`linear-gradient(135deg,${t.accent},${t.blue})`, borderRadius:12, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>◆</div>
+            <div style={{ flex:1 }}>
+              <div style={{ fontFamily:"'Syne',sans-serif", fontSize:10, color:t.accent, fontWeight:700, letterSpacing:1.5, marginBottom:8 }}>AI TAHLIL — CLAUDE</div>
+              <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:12.5, color:t.text, lineHeight:1.8 }}>
+                BTC <span style={{color:t.accent}}>$103,240</span> — kuchli qarshilik zonasida. Funding rate <span style={{color:t.yellow}}>+0.045%</span> yuqori, ehtiyot bo'ling. ETH <span style={{color:t.accent}}>$3,821</span> — support ushlab turibdi, potensial long imkoniyat. Bugungi PnL ijobiy, strategiyangiz ishlayapti! ✅
+              </div>
+            </div>
+            <button className="btn-ghost" onClick={() => setPage("ai")} style={{ fontSize:11, padding:"6px 12px", flexShrink:0 }}>Chat →</button>
+          </div>
+        </div>
+
+        {/* Prices + Positions */}
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+          {/* Top coins */}
+          <div className="fade3" style={{ background:t.card, border:`1px solid ${t.border}`, borderRadius:14, padding:16, boxShadow:t.shadow }}>
+            <div style={{ fontFamily:"'Syne',sans-serif", fontSize:10, color:t.sub, fontWeight:700, letterSpacing:1.5, marginBottom:14 }}>TEZKOR NARXLAR</div>
+            {COINS.slice(0,4).map((c,i) => {
+              const ch = CHANGES[c.symbol];
+              const pr = prices[c.symbol]?.mexc || BASE_PRICES[c.symbol];
+              return (
+                <div key={i} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"9px 0", borderBottom: i<3?`1px solid ${t.border}`:"none" }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                    <div style={{ width:30, height:30, background:c.color+"22", borderRadius:8, display:"flex", alignItems:"center", justifyContent:"center", fontSize:13, color:c.color }}>{c.icon}</div>
+                    <div>
+                      <div style={{ fontFamily:"'Syne',sans-serif", fontSize:12, fontWeight:700 }}>{c.symbol}</div>
+                      <div style={{ fontSize:10, color:t.sub }}>{c.name}</div>
+                    </div>
+                  </div>
+                  <MiniChart positive={ch>0} width={60} height={28} />
+                  <div style={{ textAlign:"right" }}>
+                    <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:13, fontWeight:600 }}>${fmt(pr)}</div>
+                    <div style={{ fontSize:11, color:ch>0?t.accent:t.red }}>{ch>0?"▲":"▼"} {Math.abs(ch)}%</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Open Positions */}
+          <div className="fade4" style={{ background:t.card, border:`1px solid ${t.border}`, borderRadius:14, padding:16, boxShadow:t.shadow }}>
+            <div style={{ fontFamily:"'Syne',sans-serif", fontSize:10, color:t.sub, fontWeight:700, letterSpacing:1.5, marginBottom:14 }}>OCHIQ POZITSIYALAR</div>
+            {POSITIONS.map((pos, i) => {
+              const sym = pos.pair.split("/")[0];
+              const cur = prices[sym]?.mexc || BASE_PRICES[sym];
+              const pct = pos.type === "LONG" ? (cur - pos.entry) / pos.entry * 100 : (pos.entry - cur) / pos.entry * 100;
+              const pnl = pos.size * (pct / 100) * parseInt(pos.leverage);
+              const isPos = pnl >= 0;
+              return (
+                <div key={i} style={{ background:t.card2, borderRadius:12, padding:13, marginBottom:8 }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+                    <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+                      <span style={{ fontFamily:"'Syne',sans-serif", fontSize:13, fontWeight:700 }}>{pos.pair}</span>
+                      <span style={{ fontSize:10, padding:"2px 7px", borderRadius:5, background:pos.type==="LONG"?t.accent+"22":t.red+"22", color:pos.type==="LONG"?t.accent:t.red, fontWeight:700 }}>{pos.type} {pos.leverage}</span>
+                    </div>
+                    <span style={{ fontFamily:"'JetBrains Mono',monospace", color:isPos?t.accent:t.red, fontWeight:700, fontSize:13 }}>{isPos?"+":""}{fmt(pnl)}$</span>
+                  </div>
+                  <div style={{ display:"flex", justifyContent:"space-between", fontSize:11, color:t.sub, fontFamily:"'JetBrains Mono',monospace" }}>
+                    <span>Kirish: <span style={{color:t.text}}>${fmt(pos.entry)}</span></span>
+                    <span>Hozir: <span style={{color:isPos?t.accent:t.red}}>${fmt(cur)}</span></span>
+                    <span style={{color:isPos?t.accent:t.red}}>{isPos?"+":""}{fmt(pct,2)}%</span>
+                  </div>
+                </div>
+              );
+            })}
+            <div style={{ marginTop:10, display:"flex", gap:8 }}>
+              <div style={{ flex:1, background:t.card2, borderRadius:10, padding:"10px 14px", textAlign:"center" }}>
+                <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:13, fontWeight:700, color:t.accent }}>+${fmt(totalOpen)}</div>
+                <div style={{ fontSize:10, color:t.sub, marginTop:2 }}>Umumiy PnL</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // PRICES PAGE
+  const PricesPage = () => (
+    <div>
+      <div style={{ display:"flex", gap:8, marginBottom:16, flexWrap:"wrap" }}>
+        {["Top 7","Layer1","DeFi","Meme"].map((t2,i) => (
+          <button key={i} className={i===0?"btn-primary":"btn-ghost"} style={{ fontSize:12, padding:"6px 14px", borderRadius:20 }}>{t2}</button>
+        ))}
+        <div style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:6, fontSize:11, color:t.accent, fontFamily:"'Syne',sans-serif" }}>
+          <div className="live-dot" style={{ width:6, height:6, borderRadius:"50%", background:t.accent }} />
+          JONLI • 2s
+        </div>
+      </div>
+
+      <div className="fade" style={{ background:t.card, border:`1px solid ${t.border}`, borderRadius:14, overflow:"hidden", boxShadow:t.shadow }}>
+        <div style={{ overflowX:"auto" }}>
+          <table>
+            <thead>
+              <tr>
+                <th style={{textAlign:"left"}}>Coin</th>
+                <th>MEXC</th>
+                <th>Binance</th>
+                <th>Bybit</th>
+                <th>OKX</th>
+                <th>O'zg.</th>
+                <th>Graf.</th>
+              </tr>
+            </thead>
+            <tbody>
+              {COINS.map((c, i) => {
+                const p = prices[c.symbol];
+                const ch = CHANGES[c.symbol];
+                return (
+                  <tr key={i} className="row-hover">
+                    <td>
+                      <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                        <div style={{ width:32, height:32, background:c.color+"22", borderRadius:9, display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, color:c.color }}>{c.icon}</div>
+                        <div>
+                          <div style={{ fontFamily:"'Syne',sans-serif", fontWeight:700, fontSize:13 }}>{c.symbol}</div>
+                          <div style={{ fontSize:10, color:t.sub }}>{c.name}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td style={{ fontWeight:700, color:t.accent }}>${fmt(p.mexc)}</td>
+                    <td>${fmt(p.binance)}</td>
+                    <td>${fmt(p.bybit)}</td>
+                    <td>${fmt(p.okx)}</td>
+                    <td style={{ color:ch>0?t.accent:t.red, fontWeight:700 }}>{ch>0?"▲":"▼"} {Math.abs(ch)}%</td>
+                    <td><MiniChart positive={ch>0} width={60} height={24} /></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Market stats */}
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))", gap:12, marginTop:16 }}>
+        {[
+          { label:"BTC Dominance", val:"52.4%", color:t.yellow },
+          { label:"Bozor Hajmi", val:"$2.84T", color:t.accent },
+          { label:"Fear & Greed", val:"72 — Greed", color:t.accent },
+          { label:"BTC Funding", val:"+0.045%", color:t.red },
+        ].map((s,i) => (
+          <div key={i} style={{ background:t.card, border:`1px solid ${t.border}`, borderRadius:12, padding:"14px 16px", boxShadow:t.shadow }}>
+            <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:16, fontWeight:700, color:s.color }}>{s.val}</div>
+            <div style={{ fontFamily:"'Syne',sans-serif", fontSize:11, color:t.sub, marginTop:4 }}>{s.label}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  // PORTFOLIO PAGE
+  const PortfolioPage = () => (
+    <div>
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:16 }}>
+        <div className="fade" style={{ background:`linear-gradient(135deg,${t.accent}20,${t.blue}10)`, border:`1px solid ${t.accent}30`, borderRadius:14, padding:20, boxShadow:`0 0 30px ${t.accent}12` }}>
+          <div style={{ fontFamily:"'Syne',sans-serif", fontSize:10, color:t.accent, fontWeight:700, letterSpacing:1.5, marginBottom:8 }}>MEXC BALANS</div>
+          <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:30, fontWeight:700, color:t.accent }}>$12,480</div>
+          <div style={{ fontFamily:"'Syne',sans-serif", fontSize:12, color:t.sub, marginTop:6 }}>≈ 154,176,000 UZS</div>
+        </div>
+        <div className="fade2" style={{ background:t.card, border:`1px solid ${t.border}`, borderRadius:14, padding:20, boxShadow:t.shadow }}>
+          <div style={{ fontFamily:"'Syne',sans-serif", fontSize:10, color:t.sub, fontWeight:700, letterSpacing:1.5, marginBottom:8 }}>OYLIK PnL</div>
+          <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:30, fontWeight:700, color:t.accent }}>+$4,820</div>
+          <div style={{ fontFamily:"'Syne',sans-serif", fontSize:12, color:t.accent, marginTop:6 }}>▲ +38.6% bu oy</div>
+        </div>
+      </div>
+
+      <div className="fade3" style={{ background:t.card, border:`1px solid ${t.border}`, borderRadius:14, padding:18, marginBottom:16, boxShadow:t.shadow }}>
+        <div style={{ fontFamily:"'Syne',sans-serif", fontSize:10, color:t.sub, fontWeight:700, letterSpacing:1.5, marginBottom:16 }}>OCHIQ POZITSIYALAR — MEXC FUTURES</div>
+        {POSITIONS.map((pos, i) => {
+          const sym = pos.pair.split("/")[0];
+          const cur = prices[sym]?.mexc || BASE_PRICES[sym];
+          const pct = pos.type === "LONG" ? (cur - pos.entry) / pos.entry * 100 : (pos.entry - cur) / pos.entry * 100;
+          const pnl = pos.size * (pct / 100) * parseInt(pos.leverage);
+          const liq = pos.type === "LONG" ? pos.entry * 0.9 : pos.entry * 1.1;
+          const isPos = pnl >= 0;
+          return (
+            <div key={i} style={{ background:t.card2, borderRadius:12, padding:16, marginBottom:10 }}>
+              <div style={{ display:"flex", justifyContent:"space-between", marginBottom:12 }}>
+                <div style={{ display:"flex", gap:10, alignItems:"center" }}>
+                  <span style={{ fontFamily:"'Syne',sans-serif", fontWeight:700, fontSize:15 }}>{pos.pair}</span>
+                  <span style={{ fontSize:11, padding:"3px 8px", borderRadius:6, background:pos.type==="LONG"?t.accent+"22":t.red+"22", color:pos.type==="LONG"?t.accent:t.red, fontWeight:700 }}>{pos.type}</span>
+                  <span style={{ fontSize:11, padding:"3px 8px", borderRadius:6, background:t.border, color:t.sub }}>{pos.leverage}</span>
+                </div>
+                <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:18, fontWeight:700, color:isPos?t.accent:t.red }}>{isPos?"+":""}{fmt(pnl)}$</span>
+              </div>
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:10 }}>
+                {[
+                  { l:"Kirish", v:`$${fmt(pos.entry)}` },
+                  { l:"Joriy", v:`$${fmt(cur)}`, c:isPos?t.accent:t.red },
+                  { l:"Hajm", v:`$${pos.size}` },
+                  { l:"Likvidatsiya", v:`$${fmt(liq)}`, c:t.red },
+                ].map((d,j) => (
+                  <div key={j} style={{ background:t.card, borderRadius:8, padding:"8px 10px" }}>
+                    <div style={{ fontFamily:"'Syne',sans-serif", fontSize:10, color:t.sub, marginBottom:3 }}>{d.l}</div>
+                    <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:12, fontWeight:600, color:d.c||t.text }}>{d.v}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Allocation */}
+      <div className="fade4" style={{ background:t.card, border:`1px solid ${t.border}`, borderRadius:14, padding:18, boxShadow:t.shadow }}>
+        <div style={{ fontFamily:"'Syne',sans-serif", fontSize:10, color:t.sub, fontWeight:700, letterSpacing:1.5, marginBottom:16 }}>AKTIVLAR TAQSIMOTI</div>
+        <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+          {[
+            { name:"BTC", pct:45, val:"$5,616", color:"#F7931A" },
+            { name:"ETH", pct:28, val:"$3,494", color:"#627EEA" },
+            { name:"USDT", pct:20, val:"$2,496", color:"#26A17B" },
+            { name:"Boshqa", pct:7, val:"$874", color:"#8b5cf6" },
+          ].map((a,i) => (
+            <div key={i}>
+              <div style={{ display:"flex", justifyContent:"space-between", marginBottom:5, fontFamily:"'Syne',sans-serif", fontSize:12 }}>
+                <span style={{ fontWeight:600 }}>{a.name}</span>
+                <span style={{ color:t.sub }}>{a.val} <span style={{color:t.text}}>{a.pct}%</span></span>
+              </div>
+              <div style={{ height:6, background:t.card2, borderRadius:4 }}>
+                <div style={{ height:"100%", width:`${a.pct}%`, background:a.color, borderRadius:4, transition:"width 1s ease" }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+
+  // AI PAGE
+  const AiPage = () => {
+    const quickPrompts = [
+      "Bugungi BTC tahlilini ber",
+      "Xatolarimni ko'rib chiq",
+      "Funding rate nimani anglatadi?",
+      "Haftalik hisobotim qanday?",
+      "Risk management maslahati",
+      "Eng yaxshi entry qachon?",
+    ];
+    return (
+      <div style={{ display:"flex", flexDirection:"column", height:"calc(100vh - 130px)", gap:12 }}>
+        {/* Chat */}
+        <div className="fade" style={{ flex:1, background:t.card, border:`1px solid ${t.border}`, borderRadius:14, overflow:"hidden", display:"flex", flexDirection:"column", boxShadow:t.shadow }}>
+          <div style={{ padding:"14px 16px", borderBottom:`1px solid ${t.border}`, display:"flex", alignItems:"center", gap:10 }}>
+            <div style={{ width:34, height:34, background:`linear-gradient(135deg,${t.accent},${t.blue})`, borderRadius:10, display:"flex", alignItems:"center", justifyContent:"center" }}>◆</div>
+            <div>
+              <div style={{ fontFamily:"'Syne',sans-serif", fontSize:13, fontWeight:700 }}>Claude AI — Trading Yordamchi</div>
+              <div style={{ fontSize:10, color:t.accent, display:"flex", alignItems:"center", gap:4 }}><span className="live-dot" style={{ display:"inline-block", width:5, height:5, borderRadius:"50%", background:t.accent }} /> Faol</div>
+            </div>
+          </div>
+
+          <div style={{ flex:1, overflowY:"auto", padding:16, display:"flex", flexDirection:"column", gap:12 }}>
+            {messages.map((msg, i) => (
+              <div key={i} style={{ display:"flex", justifyContent:msg.role==="user"?"flex-end":"flex-start" }}>
+                <div style={{
+                  maxWidth:"80%", padding:"12px 14px", borderRadius:12, fontSize:13,
+                  fontFamily:msg.role==="user"?"'Syne',sans-serif":"'JetBrains Mono',monospace",
+                  lineHeight:1.7,
+                  background:msg.role==="user"?`linear-gradient(135deg,${t.accent},${t.blue})`:`${t.card2}`,
+                  color:msg.role==="user"?"#000":t.text,
+                  border:msg.role==="assistant"?`1px solid ${t.border}`:"none",
+                }}>
+                  {msg.content}
+                </div>
+              </div>
+            ))}
+            {loading && (
+              <div style={{ display:"flex", justifyContent:"flex-start" }}>
+                <div style={{ background:t.card2, border:`1px solid ${t.border}`, borderRadius:12, padding:"12px 16px", display:"flex", gap:4 }}>
+                  {[0,1,2].map(j => <div key={j} className="live-dot" style={{ width:6, height:6, borderRadius:"50%", background:t.accent, animationDelay:`${j*0.2}s` }} />)}
+                </div>
+              </div>
+            )}
+            <div ref={chatEndRef} />
+          </div>
+
+          {/* Quick prompts */}
+          <div style={{ padding:"8px 16px", display:"flex", gap:6, flexWrap:"wrap", borderTop:`1px solid ${t.border}` }}>
+            {quickPrompts.map((q, i) => (
+              <button key={i} onClick={() => !loading && sendMessage(q, `BTC: $${fmt(prices.BTC.mexc)}, ETH: $${fmt(prices.ETH.mexc)}`)}
+                style={{ fontSize:11, padding:"5px 10px", borderRadius:20, background:t.card2, border:`1px solid ${t.border}`, color:t.sub, cursor:"pointer", fontFamily:"'Syne',sans-serif", transition:"all 0.2s", whiteSpace:"nowrap" }}>
+                {q}
+              </button>
+            ))}
+          </div>
+
+          {/* Input */}
+          <div style={{ padding:"12px 16px", borderTop:`1px solid ${t.border}`, display:"flex", gap:10 }}>
+            <input
+              value={aiInput}
+              onChange={e => setAiInput(e.target.value)}
+              onKeyDown={e => { if (e.key==="Enter" && !e.shiftKey && aiInput.trim() && !loading) { sendMessage(aiInput, `BTC: $${fmt(prices.BTC.mexc)}, ETH: $${fmt(prices.ETH.mexc)}`); setAiInput(""); }}}
+              placeholder="Savol bering..."
+              style={{ flex:1, borderRadius:10 }}
+            />
+            <button className={loading?"btn-ghost":"btn-primary"} onClick={() => { if (aiInput.trim() && !loading) { sendMessage(aiInput, `BTC: $${fmt(prices.BTC.mexc)}`); setAiInput(""); }}}
+              style={{ padding:"10px 16px", display:"flex", alignItems:"center", gap:6 }}>
+              {loading ? <span className="spin" style={{ display:"inline-block" }}>↻</span> : <Icon name="send" size={14} />}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // JOURNAL PAGE
+  const JournalPage = () => {
+    const totalWin = journalEntries.filter(e=>e.pnl>0).length;
+    const totalLoss = journalEntries.filter(e=>e.pnl<0).length;
+    const totalPnlJ = journalEntries.reduce((s,e)=>s+e.pnl,0);
+    const wr = Math.round(totalWin/journalEntries.length*100);
+
+    return (
+      <div>
+        {/* Stats */}
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))", gap:10, marginBottom:16 }}>
+          {[
+            { l:"G'alaba", v:totalWin, c:t.accent, ic:"✓" },
+            { l:"Mag'lubiyat", v:totalLoss, c:t.red, ic:"✗" },
+            { l:"Win Rate", v:`${wr}%`, c:t.blue, ic:"%" },
+            { l:"Jami PnL", v:`${totalPnlJ>0?"+":""}$${fmt(totalPnlJ)}`, c:totalPnlJ>0?t.accent:t.red, ic:"$" },
+          ].map((s,i) => (
+            <div key={i} className={`fade card-hover`} style={{ background:t.card, border:`1px solid ${t.border}`, borderRadius:12, padding:"14px 16px", textAlign:"center", transition:"all 0.2s", boxShadow:t.shadow, animationDelay:`${i*0.08}s` }}>
+              <div style={{ fontSize:20, color:s.c, fontWeight:800, fontFamily:"'JetBrains Mono',monospace" }}>{s.ic}</div>
+              <div style={{ fontSize:22, fontWeight:800, color:s.c, fontFamily:"'JetBrains Mono',monospace", marginTop:4 }}>{s.v}</div>
+              <div style={{ fontSize:10, color:t.sub, marginTop:4, fontFamily:"'Syne',sans-serif" }}>{s.l}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Add trade btn */}
+        <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:12 }}>
+          <button className="btn-primary glow-btn" onClick={() => setShowAddTrade(true)} style={{ display:"flex", alignItems:"center", gap:6 }}>
+            <Icon name="plus" size={14} /> Savdo Qo'shish
+          </button>
+        </div>
+
+        {/* Journal table */}
+        <div className="fade2" style={{ background:t.card, border:`1px solid ${t.border}`, borderRadius:14, overflow:"hidden", boxShadow:t.shadow }}>
+          <div style={{ overflowX:"auto" }}>
+            <table>
+              <thead>
+                <tr>
+                  <th style={{textAlign:"left"}}>Sana</th>
+                  <th style={{textAlign:"left"}}>Juftlik</th>
+                  <th>Tur</th>
+                  <th>Kirish</th>
+                  <th>Chiqish</th>
+                  <th>Hajm</th>
+                  <th>PnL</th>
+                </tr>
+              </thead>
+              <tbody>
+                {journalEntries.map((e, i) => (
+                  <tr key={i} className="row-hover">
+                    <td style={{ color:t.sub, fontSize:11 }}>{e.date}</td>
+                    <td style={{ fontFamily:"'Syne',sans-serif", fontWeight:600, fontSize:12 }}>{e.pair}</td>
+                    <td>
+                      <span style={{ fontSize:10, padding:"3px 8px", borderRadius:5, background:e.type==="LONG"?t.accent+"22":t.red+"22", color:e.type==="LONG"?t.accent:t.red, fontWeight:700 }}>{e.type} {e.leverage}</span>
+                    </td>
+                    <td>${fmt(e.entry)}</td>
+                    <td>${fmt(e.exit)}</td>
+                    <td>${e.size.toLocaleString()}</td>
+                    <td style={{ color:e.pnl>0?t.accent:t.red, fontWeight:700 }}>{e.pnl>0?"+":""}{fmt(e.pnl)}$</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // ARBITRAGE PAGE
+  const ArbitragePage = () => (
+    <div>
+      <div style={{ background:`linear-gradient(135deg,${t.purple}15,${t.blue}08)`, border:`1px solid ${t.purple}30`, borderRadius:14, padding:20, marginBottom:16, textAlign:"center" }}>
+        <div style={{ fontSize:40, marginBottom:12 }}>⇄</div>
+        <div style={{ fontFamily:"'Syne',sans-serif", fontSize:20, fontWeight:800, marginBottom:8 }}>Arbitraj Skaneri</div>
+        <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:13, color:t.sub, lineHeight:1.7, marginBottom:16, maxWidth:400, margin:"0 auto 16px" }}>
+          Real-time narx farqlari tahlili — tez orada to'liq ishga tushadi
+        </div>
+        <div style={{ display:"inline-flex", alignItems:"center", gap:8, background:t.purple+"22", border:`1px solid ${t.purple}40`, borderRadius:10, padding:"8px 18px", color:t.purple, fontFamily:"'Syne',sans-serif", fontSize:12, fontWeight:700 }}>
+          🔜 Tez Kunda — Ishlab Chiqilmoqda
+        </div>
+      </div>
+
+      {/* Preview table */}
+      <div className="fade2" style={{ background:t.card, border:`1px solid ${t.border}`, borderRadius:14, overflow:"hidden", boxShadow:t.shadow }}>
+        <div style={{ padding:"14px 16px", borderBottom:`1px solid ${t.border}`, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+          <div style={{ fontFamily:"'Syne',sans-serif", fontSize:10, color:t.sub, fontWeight:700, letterSpacing:1.5 }}>NARX FARQLARI — PREVIEW</div>
+          <div style={{ fontSize:11, color:t.sub }}>Komissiya hisoblanmagan</div>
+        </div>
+        <div style={{ overflowX:"auto" }}>
+          <table>
+            <thead>
+              <tr>
+                <th style={{textAlign:"left"}}>Coin</th>
+                <th>MEXC</th>
+                <th>Binance</th>
+                <th>Bybit</th>
+                <th>OKX</th>
+                <th>Spread</th>
+                <th>Holat</th>
+              </tr>
+            </thead>
+            <tbody>
+              {arbData.map((c, i) => (
+                <tr key={i} className="row-hover">
+                  <td>
+                    <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                      <div style={{ width:26, height:26, background:c.color+"22", borderRadius:7, display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, color:c.color }}>{c.icon}</div>
+                      <span style={{ fontFamily:"'Syne',sans-serif", fontWeight:700, fontSize:12 }}>{c.symbol}</span>
+                    </div>
+                  </td>
+                  <td>${fmt(c.prices.mexc)}</td>
+                  <td>${fmt(c.prices.binance)}</td>
+                  <td>${fmt(c.prices.bybit)}</td>
+                  <td>${fmt(c.prices.okx)}</td>
+                  <td style={{ color:c.spread>0.15?t.accent:t.sub, fontWeight:700 }}>{c.spread.toFixed(3)}%</td>
+                  <td>
+                    <span style={{ fontSize:10, padding:"3px 8px", borderRadius:5, fontWeight:700,
+                      background:c.profitable?t.accent+"22":t.border,
+                      color:c.profitable?t.accent:t.sub }}>
+                      {c.profitable?"✓ Foydali":"—"}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+
+  // SETTINGS PAGE  
+  const SettingsPage = () => (
+    <div>
+      <div className="fade" style={{ background:t.card, border:`1px solid ${t.border}`, borderRadius:14, padding:24, boxShadow:t.shadow }}>
+        <div style={{ fontFamily:"'Syne',sans-serif", fontSize:10, color:t.sub, fontWeight:700, letterSpacing:1.5, marginBottom:20 }}>API KALITLAR</div>
+        <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+          {[
+            { key:"mexc", label:"MEXC API Key", hint:"mexc.com → API Management" },
+            { key:"binance", label:"Binance API Key", hint:"binance.com → API Management" },
+            { key:"bybit", label:"Bybit API Key", hint:"bybit.com → API" },
+            { key:"okx", label:"OKX API Key", hint:"okx.com → API Keys" },
+            { key:"claude", label:"Claude (Anthropic) API Key", hint:"console.anthropic.com → API Keys" },
+          ].map(({key,label,hint}) => (
+            <div key={key}>
+              <div style={{ display:"flex", justifyContent:"space-between", marginBottom:6 }}>
+                <label style={{ fontFamily:"'Syne',sans-serif", fontSize:12, fontWeight:600 }}>{label}</label>
+                <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:10, color:t.sub }}>{hint}</span>
+              </div>
+              <input type="password" placeholder="sk-..." value={apiKeys[key]} onChange={e=>setApiKeys(p=>({...p,[key]:e.target.value}))} />
+            </div>
+          ))}
+          <button className="btn-primary" style={{ marginTop:8, display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
+            <Icon name="key" size={14} /> Saqlash
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  const pages = { dashboard:<Dashboard/>, prices:<PricesPage/>, portfolio:<PortfolioPage/>, ai:<AiPage/>, journal:<JournalPage/>, arbitrage:<ArbitragePage/>, settings:<SettingsPage/> };
+
+  return (
+    <div style={{ fontFamily:"'Syne',sans-serif", background:t.bg, minHeight:"100vh", color:t.text, display:"flex" }}>
+      <style>{css}</style>
+
+      {/* SIDEBAR */}
+      <div style={{ width:220, background:t.sidebar, borderRight:`1px solid ${t.border}`, display:"flex", flexDirection:"column", position:"fixed", top:0, left:sideOpen?0:-220, height:"100vh", zIndex:100, transition:"left 0.3s cubic-bezier(0.4,0,0.2,1)", boxShadow:sideOpen?`4px 0 32px rgba(0,0,0,0.4)`:"none" }}>
+        {/* Logo */}
+        <div style={{ padding:"20px 18px", borderBottom:`1px solid ${t.border}` }}>
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+            <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+              <div style={{ width:38, height:38, background:`linear-gradient(135deg,${t.accent},${t.blue})`, borderRadius:11, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18 }}>◈</div>
+              <div>
+                <div style={{ fontSize:16, fontWeight:800, letterSpacing:1 }}>TradeIQ</div>
+                <div style={{ fontSize:9, color:t.sub, letterSpacing:2 }}>O'ZBEK TILI</div>
+              </div>
+            </div>
+            <button onClick={()=>setSideOpen(false)} style={{ background:"none", border:"none", color:t.sub, cursor:"pointer" }}>
+              <Icon name="close" size={16} />
+            </button>
+          </div>
+        </div>
+
+        {/* Nav */}
+        <div style={{ flex:1, padding:"12px 10px", overflowY:"auto" }}>
+          {navItems.map(item => (
+            <button key={item.id} onClick={()=>{setPage(item.id);setSideOpen(false);}} className="nav-item"
+              style={{ width:"100%", display:"flex", alignItems:"center", gap:11, padding:"11px 12px", borderRadius:10, cursor:"pointer", marginBottom:3, background:page===item.id?`${t.accent}15`:"transparent", borderLeft:page===item.id?`2px solid ${t.accent}`:"2px solid transparent", color:page===item.id?t.accent:t.sub, fontSize:13, fontWeight:page===item.id?700:500, border:"none", textAlign:"left", transition:"all 0.2s", fontFamily:"'Syne',sans-serif" }}>
+              <Icon name={item.icon} size={16} />
+              <span>{item.label}</span>
+              {item.soon && <span style={{ fontSize:9, background:t.purple+"33", color:t.purple, padding:"2px 6px", borderRadius:4, marginLeft:"auto", fontWeight:700 }}>BREVE</span>}
+            </button>
+          ))}
+        </div>
+
+        {/* Bottom */}
+        <div style={{ padding:"12px 10px", borderTop:`1px solid ${t.border}` }}>
+          <button onClick={()=>{setPage("settings");setSideOpen(false);}} className="nav-item"
+            style={{ width:"100%", display:"flex", alignItems:"center", gap:11, padding:"11px 12px", borderRadius:10, cursor:"pointer", background:page==="settings"?`${t.accent}15`:"transparent", borderLeft:page==="settings"?`2px solid ${t.accent}`:"2px solid transparent", color:page==="settings"?t.accent:t.sub, fontSize:13, fontWeight:500, border:"none", textAlign:"left", transition:"all 0.2s", fontFamily:"'Syne',sans-serif" }}>
+            <Icon name="settings" size={16} />
+            <span>Sozlamalar</span>
+          </button>
+          <div style={{ display:"flex", alignItems:"center", gap:10, padding:"11px 12px", marginTop:4 }}>
+            <div style={{ width:32, height:32, background:`linear-gradient(135deg,${t.purple},${t.blue})`, borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", fontSize:13 }}>👤</div>
+            <div>
+              <div style={{ fontSize:12, fontWeight:700 }}>Trader</div>
+              <div style={{ fontSize:10, color:t.accent }}>● Online</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Overlay */}
+      {sideOpen && <div onClick={()=>setSideOpen(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:99, backdropFilter:"blur(2px)" }} />}
+
+      {/* MAIN */}
+      <div style={{ flex:1, display:"flex", flexDirection:"column" }}>
+        {/* TOPBAR */}
+        <div style={{ background:t.sidebar, borderBottom:`1px solid ${t.border}`, padding:"12px 16px", display:"flex", alignItems:"center", gap:12, position:"sticky", top:0, zIndex:50 }}>
+          <button onClick={()=>setSideOpen(true)} style={{ background:"none", border:"none", color:t.text, cursor:"pointer", padding:4, display:"flex" }}>
+            <Icon name="menu" size={22} />
+          </button>
+
+          <div style={{ flex:1 }}>
+            <div style={{ fontWeight:800, fontSize:15 }}>{navItems.find(n=>n.id===page)?.label || "Sozlamalar"}</div>
+            <div style={{ fontSize:10, color:t.sub }}>4 birja ulangan • Real-time</div>
+          </div>
+
+          {/* BTC quick */}
+          <div style={{ display:"flex", alignItems:"center", gap:6, padding:"6px 12px", background:t.card2, borderRadius:10, border:`1px solid ${t.border}` }}>
+            <span style={{ fontSize:12, color:"#F7931A" }}>₿</span>
+            <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:12, fontWeight:600 }}>${fmt(prices.BTC.mexc)}</span>
+            <span style={{ fontSize:10, color:t.accent }}>▲2.4%</span>
+          </div>
+
+          {/* Live */}
+          <div style={{ display:"flex", alignItems:"center", gap:5, background:t.accent+"15", border:`1px solid ${t.accent}30`, borderRadius:20, padding:"5px 11px" }}>
+            <div className="live-dot" style={{ width:6, height:6, borderRadius:"50%", background:t.accent }} />
+            <span style={{ fontSize:11, color:t.accent, fontWeight:700 }}>JONLI</span>
+          </div>
+
+          {/* Theme */}
+          <button onClick={()=>setDark(!dark)} style={{ background:t.card2, border:`1px solid ${t.border}`, borderRadius:10, padding:"7px 12px", cursor:"pointer", color:t.text, display:"flex", alignItems:"center", gap:6, fontSize:12, fontFamily:"'Syne',sans-serif", fontWeight:600 }}>
+            {dark ? <><Icon name="sun" size={14} /> Yorug'</> : <><Icon name="moon" size={14} /> Qorong'u</>}
+          </button>
+        </div>
+
+        {/* PAGE CONTENT */}
+        <div style={{ flex:1, padding:"16px 16px 32px", maxWidth:960, margin:"0 auto", width:"100%" }}>
+          {pages[page] || <Dashboard />}
+        </div>
+      </div>
+
+      {/* ADD TRADE MODAL */}
+      {showAddTrade && (
+        <div className="modal-bg" onClick={e=>e.target===e.currentTarget&&setShowAddTrade(false)}>
+          <div className="modal fade">
+            <div style={{ display:"flex", justifyContent:"space-between", marginBottom:20 }}>
+              <div style={{ fontSize:16, fontWeight:800 }}>Yangi Savdo Qo'shish</div>
+              <button onClick={()=>setShowAddTrade(false)} style={{ background:"none", border:"none", color:t.sub, cursor:"pointer" }}><Icon name="close" size:18 /></button>
+            </div>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+              {[
+                { l:"Juftlik", key:"pair", type:"select", opts:["BTC/USDT","ETH/USDT","SOL/USDT","BNB/USDT","XRP/USDT"] },
+                { l:"Tur", key:"type", type:"select", opts:["LONG","SHORT"] },
+                { l:"Leverage", key:"leverage", type:"select", opts:["1x","2x","3x","5x","8x","10x","20x","50x"] },
+                { l:"Hajm ($)", key:"size", type:"number", ph:"1000" },
+                { l:"Kirish narxi", key:"entry", type:"number", ph:"103000" },
+                { l:"Chiqish narxi", key:"exit", type:"number", ph:"104000" },
+              ].map(f => (
+                <div key={f.key}>
+                  <label style={{ fontSize:11, color:t.sub, marginBottom:5, display:"block", fontWeight:600 }}>{f.l}</label>
+                  {f.type==="select" ? (
+                    <select value={newTrade[f.key]} onChange={e=>setNewTrade(p=>({...p,[f.key]:e.target.value}))}>
+                      {f.opts.map(o=><option key={o}>{o}</option>)}
+                    </select>
+                  ) : (
+                    <input type="number" placeholder={f.ph} value={newTrade[f.key]} onChange={e=>setNewTrade(p=>({...p,[f.key]:e.target.value}))} />
+                  )}
+                </div>
+              ))}
+              <div style={{ gridColumn:"1/-1" }}>
+                <label style={{ fontSize:11, color:t.sub, marginBottom:5, display:"block", fontWeight:600 }}>Izoh</label>
+                <textarea rows={2} placeholder="Savdo strategiyasi..." value={newTrade.note} onChange={e=>setNewTrade(p=>({...p,note:e.target.value}))} style={{ resize:"none" }} />
+              </div>
+            </div>
+            <div style={{ display:"flex", gap:10, marginTop:20 }}>
+              <button className="btn-ghost" onClick={()=>setShowAddTrade(false)} style={{ flex:1 }}>Bekor</button>
+              <button className="btn-primary" onClick={addTrade} style={{ flex:2 }}>✓ Qo'shish</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
